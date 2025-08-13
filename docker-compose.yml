@@ -3,7 +3,6 @@ version: '3.8'
 services:
   autossh-tls:
     build: .
-    container_name: autossh-tls-mysql
     environment:
       - SSH_HOST=tunnel.example.com
       - SSH_PORT=2222
