@@ -35,6 +35,6 @@ You're running Traefik with a TCP router:
 tcp:
   routers:
     tunnel-mysql:
-      rule: HostSNI(`tunnel-rapidapi-scraper-mysql.c.nopenix.de`)
+      rule: HostSNI(`tunnel.example.com`)
       tls: {}
       service: mysql-backend
