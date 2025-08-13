@@ -1,6 +1,4 @@
 # 🛡️ `autossh-tls` – Persistent SSH Reverse Tunnels Over TLS with SNI Support
-
-# autossh-tls
 > Securely expose internal services through Traefik (or any SNI-based TCP router) using SSH tunnels wrapped in **TLS with SNI** — because raw SSH gets dropped by modern reverse proxies.
 
 ![Docker Pulls](https://img.shields.io/docker/pulls/nopenix/autossh-tls?style=for-the-badge)
