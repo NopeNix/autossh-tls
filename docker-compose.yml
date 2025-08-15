@@ -1,19 +1,15 @@
-version: '3.8'
-
 services:
   autossh-tls:
-    build: .
+    image: nopenix/autossh-tls:latest
     environment:
-      - SSH_HOST=tunnel.example.com
-      - SSH_PORT=2222
-      - SNI_HOST=tunnel.example.com
+      - SSH_HOST=c.example.com
+      - SSH_PORT=443
+      - SNI_HOST=tunnel-mysql.example.com
       - SSH_USER=tunnel
       - SSH_KEY_FILE=/root/.ssh/id_rsa
-      - REMOTE_PORT=3306
+      - REMOTE_BIND_PORT=3306
+      - TARGET_HOST=mysql
+      - TARGET_PORT=3306
     volumes:
-      - ssh-config:/root/.ssh
+      - ./ssh:/root/.ssh:ro
     restart: unless-stopped
-
-volumes:
-  ssh-config:
-
