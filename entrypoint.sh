@@ -48,7 +48,7 @@ exec autossh -M 0 \
   -o ServerAliveInterval=15 \
   -o ServerAliveCountMax=3 \
   -N \
-  -R "${REMOTE_BIND_PORT}":"${TARGET_HOST}":"${TARGET_PORT}" \
+  -R "0.0.0.0:"${REMOTE_BIND_PORT}":"${TARGET_HOST}":"${TARGET_PORT}" \
   "${SSH_USER}"@"${SSH_HOST}" \
   -p "${SSH_PORT}" \
   -o ProxyCommand="openssl s_client -connect ${SSH_HOST}:${SSH_PORT} -servername ${SNI_HOST} -quiet"
