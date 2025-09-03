@@ -5,6 +5,9 @@ set -u
 
 echo "🚀 autossh-tls: Starting validation"
 
+# Tunnel direction: 'reverse' (default) or 'forward'
+TUNNEL_DIRECTION="${TUNNEL_DIRECTION:-reverse}"
+
 # Required environment variables
 : "${SSH_HOST?❌ ERROR: SSH_HOST is not set}"
 : "${SSH_PORT?❌ ERROR: SSH_PORT is not set}"
@@ -38,7 +41,17 @@ export AUTOSSH_GATETIME=20
 export AUTOSSH_LOGLEVEL=7
 export AUTOSSH_LOGFILE=/proc/1/fd/1  # stdout
 
-echo "🔄 Starting autossh: ${SSH_USER}@${SSH_HOST}:${SSH_PORT} → ${TARGET_HOST}:${TARGET_PORT} (remote bind: ${REMOTE_BIND_PORT})"
+# Determine tunnel configuration based on direction
+if [ "$TUNNEL_DIRECTION" = "forward" ]; then
+  # Forward tunnel: LOCAL_PORT:TARGET_HOST:TARGET_PORT
+  TUNNEL_ARG="-L ${REMOTE_BIND_PORT}:${TARGET_HOST}:${TARGET_PORT}"
+  echo "🔄 Starting autossh (FORWARD): ${SSH_USER}@${SSH_HOST}:${SSH_PORT} ← ${TARGET_HOST}:${TARGET_PORT} (local port: ${REMOTE_BIND_PORT})"
+else
+  # Reverse tunnel: REMOTE_BIND_PORT:TARGET_HOST:TARGET_PORT
+  # Bind only to IPv4 addresses to avoid IPv6 issues
+  TUNNEL_ARG="-R *:${REMOTE_BIND_PORT}:${TARGET_HOST}:${TARGET_PORT}"
+  echo "🔄 Starting autossh (REVERSE): ${SSH_USER}@${SSH_HOST}:${SSH_PORT} → ${TARGET_HOST}:${TARGET_PORT} (remote bind: ${REMOTE_BIND_PORT})"
+fi
 
 exec autossh -M 0 \
   -o StrictHostKeyChecking=yes \
@@ -48,7 +61,7 @@ exec autossh -M 0 \
   -o ServerAliveInterval=15 \
   -o ServerAliveCountMax=3 \
   -N \
-  -R "0.0.0.0:${REMOTE_BIND_PORT}:${TARGET_HOST}:${TARGET_PORT}" \
+  $TUNNEL_ARG \
   "${SSH_USER}@${SSH_HOST}" \
   -p "${SSH_PORT}" \
   -o ProxyCommand="openssl s_client -connect ${SSH_HOST}:${SSH_PORT} -servername ${SNI_HOST} -quiet"

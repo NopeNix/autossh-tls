@@ -17,232 +17,31 @@ Perfect for exposing internal services securely when the SSH server is behind a 
 
 ## ✨ Features
 
-- ✅ Full TLS support via `openssl s_client` as `ProxyCommand`
-- ✅ SNI hostname routing (`-servername`)
-- ✅ Environment variable validation at startup (fail fast)
-- ✅ Private key & `known_hosts` validation
-- ✅ Auto-reconnect using `autossh`
-- ✅ Clean logging to stdout (ideal for Docker/K8s)
-- ✅ Lightweight (Alpine Linux + only essential tools)
-- ✅ No root shell or unnecessary daemons
-
-Ideal for securely tunneling databases, admin panels (like phpMyAdmin), APIs, and internal microservices.
-
----
-
-## 📦 Prerequisites
-
-Before using this image, ensure:
-
-- An SSH server accessible over **port 443 (or any TLS-wrapped port)**
-- SNI-based routing configured on the server side (e.g., via `sslh`, `nginx`, or custom proxy)
-- SSH key-based authentication enabled (password login not supported)
-- A `known_hosts` file for the target SSH host
-- A dedicated SSH user with restricted access (e.g., `tunnel` user with forced command if needed)
-
----
-
-## 🚀 Getting Started
-
-Follow these steps to deploy `autossh-tls` and establish a secure reverse tunnel in minutes.
-
-> 💡 Replace all placeholder values (`example.com`, `tunnel-mysql...`, IPs, ports) with your actual setup.
-
----
-
-### Step 1: Prepare the SSH Private Key
-
-Create a directory to hold your SSH credentials:
-
-```bash
-mkdir -p ./ssh
-```
-
-You should already have an SSH key pair (generated via `ssh-keygen`) or create one now:
-
-```bash
-ssh-keygen -t rsa -b 4096 -N "" -f ./ssh/id_rsa
-```
-
-> ✅ This generates:
-> - Private key: `./ssh/id_rsa`
-> - Public key: `./ssh/id_rsa.pub`
-
-Add the public key (`id_rsa.pub`) to the remote SSH server's `~/.ssh/authorized_keys`.
-
-#### Example Content: `./ssh/id_rsa`
-```text
------BEGIN OPENSSH PRIVATE KEY-----
-b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAACFwAAAAdzc2gtcn
-NhAAAAAwEAAQAAAgEA4sF...[your private key here]...FdWUMRb7k=
------END OPENSSH PRIVATE KEY-----
-```
-
-> 🔒 Set correct permissions:
->
-> ```bash
-> chmod 600 ./ssh/id_rsa
-> ```
-
----
-
-### Step 2: Create the `known_hosts` File
-
-To prevent man-in-the-middle attacks, the container requires a trusted `known_hosts` entry for the SSH server.
-
-Run this command to fetch the server's public key:
-
-```bash
-ssh-keyscan -p 443 c.example.com >> ./ssh/known_hosts
-```
-
-> 🔧 If you're using a non-standard port (like 443), always specify `-p <port>`.
-
-If `ssh-keyscan` fails due to TLS wrapping, connect manually once from another machine to verify and add the host fingerprint.
-
-#### Example Content: `./ssh/known_hosts`
-
-```text
-c.example.com:443 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQC7F...[public key hash]...uQIDAQAB
-```
-
-> 🔐 Ensure file is readable and properly formatted:
->
-> ```bash
-> chmod 644 ./ssh/known_hosts
-> ```
-
-This file will be mounted into the container at `/root/.ssh/known_hosts`.
-
----
-
-### Step 3: Start the Stack
-
-Use the following `docker-compose.yml` as a baseline:
-
-```yaml
-version: '3.8'
-services:
-  autossh-tls:
-    image: nopenix/autossh-tls:latest
-    environment:
-      - SSH_HOST=c.example.com
-      - SSH_PORT=443
-      - SNI_HOST=tunnel-mysql.example.com
-      - SSH_USER=tunnel
-      - SSH_KEY_FILE=/root/.ssh/id_rsa
-      - REMOTE_BIND_PORT=3306
-      - TARGET_HOST=mysql
-      - TARGET_PORT=3306
-    volumes:
-      - ./ssh:/root/.ssh:ro
-    restart: unless-stopped
-
-  mysql:  # Example internal service
-    image: mysql:8.0
-    environment:
-      MYSQL_ROOT_PASSWORD: secret
-    command: --default-authentication-plugin=mysql_native_password
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-    restart: unless-stopped
-```
-
-> 🔄 Replace:
-> - `mysql` → your actual target service (`phpmyadmin`, `redis`, etc.)
-> - `TARGET_HOST` and `TARGET_PORT` → match your internal service
-> - `REMOTE_BIND_PORT` → port exposed on remote SSH server
-> - Domain names → your domains
-> - Ports → your actual ports
-
-Now start the stack:
-
-```bash
-docker compose up -d
-```
-
-Check logs to confirm everything works:
-
-```bash
-docker compose logs -f autossh-tls
-```
-
-Expected success output:
-```
-🚀 autossh-tls: Starting validation
-✅ All required config validated
-🔄 Starting autossh: tunnel@c.example.com:443 → mysql:3306 (remote bind: 3306)
-autossh[1]: starting ssh (count 1)
-```
-
-> ✅ **You’re live.** Your internal `mysql` service is now accessible via the reverse tunnel on the remote server.
-
----
-
-### ✅ Final Checklist
-
-| Task | Status |
-|------|--------|
-| 🔐 SSH key generated and added to remote `authorized_keys` | ☐ |
-| 📄 `known_hosts` file created with correct host and port | ☐ |
-| 🧩 Environment variables correctly set in `docker-compose.yml` | ☐ |
-| 📂 `./ssh` directory mounted as `/root/.ssh:ro` | ☐ |
-| 🐳 Ran `docker compose up -d` and checked logs | ☐ |
-
-When all boxes are checked — you're golden.
-
-Now go build something useful.
-
----
-
-## 🛠️ Environment Variables
-
-The following environment variables **must be set**:
-
-| Variable             | Example Value                     | Description |
-|----------------------|-----------------------------------|-------------|
-| `SSH_HOST`           | `c.example.com`                   | Address of the SSH server |
-| `SSH_PORT`           | `443`                             | Port where SSH-over-TLS runs |
-| `SNI_HOST`           | `tunnel-mysql.example.com`        | Hostname used during TLS handshake |
-| `SSH_USER`           | `tunnel`                          | SSH username |
-| `SSH_KEY_FILE`       | `/root/.ssh/id_rsa`               | Path to private key inside container |
-| `REMOTE_BIND_PORT`   | `3306`                            | Remote port on SSH server to bind to |
-| `TARGET_HOST`        | `mysql` or `localhost`            | Internal service hostname |
-| `TARGET_PORT`        | `3306`                            | Internal service port |
-
-> ❗ The container fails immediately if any required variable is missing. This prevents silent failures.
-
+- 🔒 **Secure**: Uses OpenSSL to establish TLS connection with SNI routing before initiating SSH
+- 🔄 **Persistent**: Automatically reconnects using `autossh` if the tunnel drops
+- ⚙️ **Configurable**: All settings via environment variables
+- 📦 **Lightweight**: Based on Alpine Linux (minimal footprint)
+- 🔄 **Flexible**: Support for both reverse and forward tunnels
 ---
 
 ## 🐳 Usage
 
-### Using `docker run`
+### Environment Variables
 
-```bash
-docker run -d \
-  --name autossh-tls \
-  --restart unless-stopped \
-  -e SSH_HOST=c.example.com \
-  -e SSH_PORT=443 \
-  -e SNI_HOST=tunnel-mysql.example.com \
-  -e SSH_USER=tunnel \
-  -e SSH_KEY_FILE=/root/.ssh/id_rsa \
-  -e REMOTE_BIND_PORT=3306 \
-  -e TARGET_HOST=mysql \
-  -e TARGET_PORT=3306 \
-  -v ssh-config:/root/.ssh \
-  nopenix/autossh-tls:latest
-```
+| Variable | Description | Required |
+|---------|-------------|----------|
+| `SSH_HOST` | Remote SSH server hostname | ✅ |
+| `SSH_PORT` | Remote SSH server port (typically 443) | ✅ |
+| `SNI_HOST` | SNI hostname for TLS routing | ✅ |
+| `SSH_USER` | SSH username for authentication | ✅ |
+| `SSH_KEY_FILE` | Path to private SSH key file | ✅ |
+| `REMOTE_BIND_PORT` | Port to bind on the remote SSH server (reverse) or local port (forward) | ✅ |
+| `TARGET_HOST` | Hostname of the service to tunnel to | ✅ |
+| `TARGET_PORT` | Port of the service to tunnel to | ✅ |
+| `TUNNEL_DIRECTION` | Direction of tunnel (`reverse` or `forward`) - defaults to `reverse` | |
 
-> Replace all values with your actual configuration.
-
-### Using `docker-compose.yml`
-
+### Docker Compose Example (Reverse Tunnel)
 ```yaml
-version: '3.8'
 services:
   autossh-tls:
     image: nopenix/autossh-tls:latest
@@ -255,199 +54,63 @@ services:
       - REMOTE_BIND_PORT=3306
       - TARGET_HOST=mysql
       - TARGET_PORT=3306
+      # Default is reverse tunnel, but you can be explicit:
+      - TUNNEL_DIRECTION=reverse
     volumes:
-      - ssh-config:/root/.ssh
+      - ./ssh:/root/.ssh:ro
     restart: unless-stopped
-
-volumes:
-  ssh-config:
 ```
 
-> 💡 To build locally instead of pulling from Docker Hub, replace `image:` with:
->
-> ```yaml
-> build:
->   context: .
-> ```
-
----
-
-## 🔐 SSH Key Setup
-
-### 1. Generate a Key Pair (if you don’t have one)
-
-```bash
-ssh-keygen -t rsa -b 4096 -N "" -f ./ssh/id_rsa
-```
-
-Add the public key (`id_rsa.pub`) to the remote server’s `~/.ssh/authorized_keys`.
-
-### 2. Create `known_hosts` File
-
-To prevent MITM attacks, the container requires a pre-populated `known_hosts`.
-
-Run this command (adjust port if needed):
-
-```bash
-mkdir -p ./ssh
-ssh-keyscan -p 443 c.example.com >> ./ssh/known_hosts
-```
-
-Then mount the directory:
-
-```yaml
-volumes:
-  - ./ssh:/root/.ssh:ro
-```
-
-> 🔒 Ensure the private key has secure permissions:
->
-> ```bash
-> chmod 600 ./ssh/id_rsa
-> ```
-
----
-
-## 🧪 Example Use Cases
-
-### 1. Expose phpMyAdmin Securely
-
-Expose a local `phpmyadmin` instance through a TLS-secured tunnel.
-
+### Docker Compose Example (Forward Tunnel)
 ```yaml
 services:
-  phpmyadmin:
-    image: phpmyadmin
-    restart: always
-    networks:
-      - internal
-
-  autossh-tls:
+  autossh-tls-forward:
     image: nopenix/autossh-tls:latest
     environment:
       - SSH_HOST=c.example.com
       - SSH_PORT=443
-      - SNI_HOST=tunnel-pma.example.com
+      - SNI_HOST=tunnel-mysql.example.com
       - SSH_USER=tunnel
       - SSH_KEY_FILE=/root/.ssh/id_rsa
-      - REMOTE_BIND_PORT=8080
-      - TARGET_HOST=phpmyadmin
-      - TARGET_PORT=80
+      - REMOTE_BIND_PORT=3306  # Local port to bind
+      - TARGET_HOST=mysql.internal
+      - TARGET_PORT=3306
+      - TUNNEL_DIRECTION=forward
     volumes:
       - ./ssh:/root/.ssh:ro
-    networks:
-      - internal
+    ports:
+      - "3306:3306"  # Expose the local port
     restart: unless-stopped
-
-networks:
-  internal:
 ```
-
-On the remote server, use Nginx to proxy `https://pma.example.com` → `localhost:8080`.
-
-### 2. Remote Access to MySQL
-
-Securely allow external applications to access a local MySQL instance.
-
-```yaml
-environment:
-  - REMOTE_BIND_PORT=3307
-  - TARGET_HOST=mysql
-  - TARGET_PORT=3306
-```
-
-Cloud app connects to `localhost:3307` on remote host → traffic forwarded securely.
 
 ---
 
-## 🧰 Advanced Configuration
+## 🛠️ How It Works
 
-### Autossh Options
+### Reverse Tunnel Mode (Default)
+In reverse tunnel mode, connections to `REMOTE_BIND_PORT` on the SSH server are forwarded to `TARGET_HOST:TARGET_PORT` in the docker container's network.
 
-The following `autossh` environment variables are preconfigured:
+This is useful for exposing internal services to external clients through the SSH server.
 
-```sh
-AUTOSSH_POLL=30
-AUTOSSH_FIRST_POLL=10
-AUTOSSH_GATETIME=20
-AUTOSSH_LOGLEVEL=7
-AUTOSSH_LOGFILE=/proc/1/fd/1
-```
+### Forward Tunnel Mode
+In forward tunnel mode, connections to `REMOTE_BIND_PORT` on the local machine (where the container runs) are forwarded to `TARGET_HOST:TARGET_PORT` accessible from the SSH server's network.
 
-You can override them via additional environment variables if needed.
-
-### Custom ProxyCommand (Advanced)
-
-If you need custom TLS logic (e.g., certificate pinning), you can provide your own `ProxyCommand` wrapper.
-
-Override the SSH options by extending the image or bind-mounting a custom script.
-
+This is useful for accessing services in the SSH server's network from the local environment.
 ---
 
-## 📄 Logging & Monitoring
+## 🔐 Security Notes
 
-Logs are written directly to stdout and include:
+- Ensure your SSH private key has strict permissions (600)
+- The container expects a properly populated `known_hosts` file to prevent MITM attacks
+- Traffic between the SSH client and server is encrypted with SSH
+- Initial connection is wrapped in TLS with SNI routing for environments where SSH directly is blocked
 
-- Startup validation
-- Connection attempts
-- `autossh` lifecycle messages
-
-View logs with:
-
+To generate the required `known_hosts` file:
 ```bash
-docker logs -f autossh-tls
+ssh-keyscan -p $SSH_PORT $SSH_HOST >> known_hosts
 ```
 
-Expected output on success:
-
-```
-🚀 autossh-tls: Starting validation
-✅ All required config validated
-🔄 Starting autossh: tunnel@c.example.com:443 → mysql:3306 (remote bind: 3306)
-autossh[12]: starting ssh (count 1)
 ```
 
----
+Let me know if you'd like the README expanded with more examples, usage notes, or tailored for specific environments like Kubernetes!
 
-## 🧩 Building Locally
-
-To build the image from source:
-
-```bash
-git clone https://github.com/NopeNix/autossh-tls.git
-cd autossh-tls
-docker build -t nopenix/autossh-tls:local .
-```
-
-Then use `image: nopenix/autossh-tls:local` in your compose file.
-
----
-
-## 🛡️ Security Notes
-
-- Only key-based authentication is supported.
-- The container disables password and keyboard-interactive auth.
-- `StrictHostKeyChecking=yes` prevents MITM attacks.
-- All connections are double-encrypted: TLS + SSH.
-- The container runs as `root`, but only to access `/root/.ssh`; no privilege escalation occurs.
-
-> 🔐 **Best Practice**: Restrict the SSH user on the remote side using `authorized_keys` with `command=` and `no-agent-forwarding`, etc.
-
----
-
-## 🤝 Contributing
-
-Issues and pull requests are welcome. Please:
-- Keep code clean
-- Comment complex parts
-- Test changes thoroughly
-
-No drama. Just useful improvements.
-
----
-
-## 📜 License
-
-MIT — see [LICENSE](LICENSE) for details.
-
-Copyright (c) 2025 Phil
