@@ -44,7 +44,9 @@ export AUTOSSH_LOGFILE=/proc/1/fd/1  # stdout
 # Determine tunnel configuration based on direction
 if [ "$TUNNEL_DIRECTION" = "forward" ]; then
   # Forward tunnel: LOCAL_PORT:TARGET_HOST:TARGET_PORT
-  TUNNEL_ARG="-L ${REMOTE_BIND_PORT}:${TARGET_HOST}:${TARGET_PORT}"
+  # Explicitly bind to all interfaces to avoid localhost binding issues
+  # Force IPv4 only to avoid IPv6 issues
+  TUNNEL_ARG="-L *:${REMOTE_BIND_PORT}:${TARGET_HOST}:${TARGET_PORT}"
   echo "🔄 Starting autossh (FORWARD): ${SSH_USER}@${SSH_HOST}:${SSH_PORT} ← ${TARGET_HOST}:${TARGET_PORT} (local port: ${REMOTE_BIND_PORT})"
 else
   # Reverse tunnel: REMOTE_BIND_PORT:TARGET_HOST:TARGET_PORT
@@ -60,6 +62,7 @@ exec autossh -M 0 \
   -o ExitOnForwardFailure=yes \
   -o ServerAliveInterval=15 \
   -o ServerAliveCountMax=3 \
+  -o AddressFamily=inet \
   -N \
   $TUNNEL_ARG \
   "${SSH_USER}@${SSH_HOST}" \
